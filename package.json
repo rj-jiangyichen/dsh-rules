@@ -19,6 +19,7 @@
   "files": [
     "lib/**/*.js",
     "README.md",
+    "README.zh.md",
     "LICENSE"
   ],
   "dependencies": {
