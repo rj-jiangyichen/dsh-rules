@@ -1,0 +1,20 @@
+# dsh-rules bundle layer: register the glob-activated rules plugin
+# (Claude Code rules.md style) into the host plane.
+#
+# This layer is applied by the profile loader because package.json declares
+# `dsh.bundle.patch`; `dsh plugin --profile <name> add dsh-rules` therefore
+# activates the plugin automatically — no manual cordis.patch.yml edits are
+# needed in the target profile.
+#
+# Per-profile customization (e.g. `includeClaudeSections: true`, extra
+# `projectRootMarkers`) belongs in the profile's own cordis.patch.yml as an
+# id-targeted override of this entry's `config`:
+#
+#   - id: dsh-rules
+#     name: dsh-rules
+#     config:
+#       includeClaudeSections: true
+#       projectRootMarkers: [".git", ".dsh"]
+- insert:
+    - id: dsh-rules
+      name: dsh-rules

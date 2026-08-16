@@ -51,54 +51,58 @@ match touched paths against globs → collect active rules → render a <rules> 
 
 ### Any DSH deployment (generic)
 
-No need to clone the repository first — `dsh plugin` installs the package straight from GitHub into the target profile:
+Published on the npm registry — `dsh plugin` installs **and activates** the plugin in one step:
 
 ```powershell
-# 1) Install the package (adjust the profile name: desktop / web / tui / headless)
-dsh plugin --profile desktop add "github:rj-jiangyichen/dsh-rules"
-
-# 2) Append the plugin row to <profile>/cordis.patch.yml
-# - insert:
-#     - id: dsh-rules
-#       name: dsh-rules
-#       config:
-#         includeClaudeSections: true
-
-# 3) Restart DSH (restart the desktop app; restart the web/headless process) — the plugin loads with the Cordis composition
+# Adjust the profile name: desktop / web / tui / headless
+dsh plugin --profile desktop add dsh-rules
 ```
 
-> Not published to the npm registry yet; once published, `dsh plugin --profile desktop add dsh-rules` will work directly.
-> Updates: after pushing changes to GitHub, re-run `dsh plugin --profile desktop update dsh-rules` (or remove + add) to sync the latest version.
+The package declares `dsh.bundle.patch`, so the reconcile pass of `dsh plugin add` appends `dsh-rules` to the profile's `dsh.profile.bundles` layer list automatically — **no manual `cordis.patch.yml` edits are needed**. Restart DSH (restart the desktop app; restart the web/headless process) and the plugin loads with the next Cordis composition.
+
+Updates: `dsh plugin --profile desktop update dsh-rules` (or remove + add).
+
+Installing from a local checkout (development):
+
+```powershell
+# From the repo root — activates the bundle automatically, same as the registry install
+dsh plugin --profile desktop add .
+```
+
+> ⚠️ pnpm splits `add` arguments on spaces, so a repository **path containing spaces** must be installed through a no-space junction (see below).
 
 ### DSH Desktop (Windows) one-click script
 
 ```powershell
-# 1. Clone this repository, then from the repo root: install into the desktop profile and write the patch row
+# 1. Clone this repository, then from the repo root:
 node scripts\install-desktop.mjs
 
 # 2. Restart DSH Desktop — the plugin loads with the next Cordis composition
 ```
 
-The script is equivalent to the manual steps (note: pnpm splits `add` arguments on spaces, so a repository path containing spaces must be installed through a no-space junction path):
+The script creates a no-space junction to the repo and runs the desktop app's own `dsh plugin add` through it (pnpm splits `add` arguments on spaces, so a repository path containing spaces must go through the junction):
 
 ```powershell
-# 0) Create a no-space junction to the repository (only needed when the path contains spaces)
+# 0) Create a no-space junction to the repository (needed when the path contains spaces)
 mklink /J "C:\code_repos\dsh-rules" "C:\code_repos\dsh rules plugin"
 
 # 1) Install via the desktop's own dsh command (through the junction path)
 & "C:\Program Files\DSH Desktop\DSH Desktop.exe" --expose-internals `
   "C:\Program Files\DSH Desktop\resources\app.asar.unpacked\lib\desktop-cli.js" `
   plugin --profile desktop add "C:\code_repos\dsh-rules"
-
-# 2) Append the plugin row to ~/.dsh/profiles/desktop/cordis.patch.yml
-# - insert:
-#     - id: dsh-rules
-#       name: dsh-rules
-#       config:
-#         includeClaudeSections: true
 ```
 
-**Uninstall**: `node scripts\install-desktop.mjs --uninstall`, then restart the app. Installing/uninstalling never touches the DSH installation directory (`resources\app.asar.unpacked`) — only profile configuration, fully reversible.
+Per-profile configuration (optional): the plugin loads with its code defaults; to customize, override the entry's `config` in `<profile>/cordis.patch.yml`:
+
+```yaml
+- id: dsh-rules
+  name: dsh-rules
+  config:
+    includeClaudeSections: true
+    projectRootMarkers: [".git", ".dsh"]
+```
+
+**Uninstall**: `node scripts\install-desktop.mjs --uninstall` (or `dsh plugin --profile desktop remove dsh-rules`), then restart the app. Installing/uninstalling never touches the DSH installation directory (`resources\app.asar.unpacked`) — only profile configuration, fully reversible.
 
 ## Rule format
 

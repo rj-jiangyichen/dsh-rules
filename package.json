@@ -18,10 +18,16 @@
   },
   "files": [
     "lib/**/*.js",
+    "cordis.patch.yml",
     "README.md",
     "README.zh.md",
     "LICENSE"
   ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.6",
@@ -39,7 +45,7 @@
     "yaml": "^2.9.0"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

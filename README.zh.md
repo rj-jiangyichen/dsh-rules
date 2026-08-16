@@ -51,35 +51,36 @@ agent 读取/编辑文件（fs/observed）→ 记录每会话触碰路径
 
 ### 通用安装（任意 DSH 部署）
 
-无需先克隆仓库，`dsh plugin` 会直接把 GitHub 上的包装进目标 profile：
+已发布到 npm registry —— `dsh plugin` 一步完成安装**并激活**：
 
 ```powershell
-# 1) 安装包（profile 名按你的部署调整：desktop / web / tui / headless）
-dsh plugin --profile desktop add "github:rj-jiangyichen/dsh-rules"
-
-# 2) 在 <profile>/cordis.patch.yml 追加插件行
-# - insert:
-#     - id: dsh-rules
-#       name: dsh-rules
-#       config:
-#         includeClaudeSections: true
-
-# 3) 重启 DSH（桌面版重启应用；web/headless 重启进程），插件随 Cordis 组合加载
+# profile 名按你的部署调整：desktop / web / tui / headless
+dsh plugin --profile desktop add dsh-rules
 ```
 
-> 本插件尚未发布到 npm registry；发布后将可直接 `dsh plugin --profile desktop add dsh-rules`。
-> 更新：代码推送到 GitHub 后，重新执行 `dsh plugin --profile desktop update dsh-rules`（或 remove 后 add）即可同步最新版本。
+插件包声明了 `dsh.bundle.patch`，`dsh plugin add` 的 reconcile 步骤会自动把 `dsh-rules` 追加到 profile 的 `dsh.profile.bundles` 层列表——**无需手动编辑 cordis.patch.yml**。重启 DSH（桌面版重启应用；web/headless 重启进程），插件随下次 Cordis 组合加载。
+
+更新：`dsh plugin --profile desktop update dsh-rules`（或 remove 后 add）。
+
+从本地仓库安装（开发模式）：
+
+```powershell
+# 在仓库根目录执行——同样自动激活 bundle
+dsh plugin --profile desktop add .
+```
+
+> ⚠️ pnpm 会按空格拆分 `add` 参数，仓库**路径含空格**时必须通过无空格 junction 安装（见下）。
 
 ### DSH Desktop（Windows）一键脚本
 
 ```powershell
-# 1. 克隆本仓库后，在仓库根目录执行：安装到 desktop profile 并写入 cordis.patch.yml
+# 1. 克隆本仓库后，在仓库根目录执行：
 node scripts\install-desktop.mjs
 
 # 2. 重启 DSH Desktop（插件在下次启动时随 Cordis 组合加载）
 ```
 
-脚本等价于手动执行（注意：pnpm 会按空格拆分 `add` 参数，仓库路径含空格时必须通过无空格 junction 路径安装）：
+脚本会创建指向仓库的无空格 junction，并通过它执行桌面自带的 `dsh plugin add`（pnpm 按空格拆分 `add` 参数，路径含空格时必须走 junction）：
 
 ```powershell
 # 0) 为仓库创建无空格 junction（路径含空格时需要）
@@ -89,16 +90,19 @@ mklink /J "C:\code_repos\dsh-rules" "C:\code_repos\dsh rules plugin"
 & "C:\Program Files\DSH Desktop\DSH Desktop.exe" --expose-internals `
   "C:\Program Files\DSH Desktop\resources\app.asar.unpacked\lib\desktop-cli.js" `
   plugin --profile desktop add "C:\code_repos\dsh-rules"
-
-# 2) 在 ~/.dsh/profiles/desktop/cordis.patch.yml 追加
-# - insert:
-#     - id: dsh-rules
-#       name: dsh-rules
-#       config:
-#         includeClaudeSections: true
 ```
 
-**卸载**：`node scripts\install-desktop.mjs --uninstall`，再重启应用。安装/卸载均不修改 DSH 安装目录（`resources\app.asar.unpacked`），只动 profile 配置，可随时回滚。
+按 profile 自定义配置（可选）：插件按代码默认值加载；如需定制，在 `<profile>/cordis.patch.yml` 里以 id 定位覆盖该条目的 `config`：
+
+```yaml
+- id: dsh-rules
+  name: dsh-rules
+  config:
+    includeClaudeSections: true
+    projectRootMarkers: [".git", ".dsh"]
+```
+
+**卸载**：`node scripts\install-desktop.mjs --uninstall`（或 `dsh plugin --profile desktop remove dsh-rules`），再重启应用。安装/卸载均不修改 DSH 安装目录（`resources\app.asar.unpacked`），只动 profile 配置，可随时回滚。
 
 ## 规则格式
 

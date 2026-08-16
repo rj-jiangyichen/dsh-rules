@@ -2,12 +2,23 @@
 /**
  * Install / uninstall the dsh-rules plugin into the DSH Desktop profile.
  *
+ * dsh-rules is a standard DSH plugin bundle: its package.json declares
+ * `dsh.bundle.patch`, so `dsh plugin --profile <name> add <spec>` installs
+ * the dependency AND activates it as a profile layer in one step — the
+ * reconcile pass appends the package to the profile's `dsh.profile.bundles`
+ * list. No manual cordis.patch.yml edits are needed.
+ *
  * Install does two things:
- *   1. `dsh plugin --profile <name> add <this repo>` — the same packaged
- *      `dsh plugin` command the desktop app itself runs, adding `dsh-rules`
- *      to the profile's package.json and node_modules.
- *   2. Appends an `insert` row to the profile's `cordis.patch.yml` so the
- *      plugin is composed into the host plane on the next app start.
+ *   1. Ensures a no-space junction to this repository. pnpm splits `add`
+ *      arguments on spaces, so a repository path containing spaces must be
+ *      installed through the junction path (e.g. `C:\code_repos\dsh-rules`
+ *      → `C:\code_repos\dsh rules plugin`).
+ *   2. Runs `dsh plugin --profile <name> add <junction>` exactly like the
+ *      desktop app's own plugin command; the installed dependency is a live
+ *      link into the repo.
+ *
+ * Uninstall runs `dsh plugin --profile <name> remove dsh-rules`, which also
+ * removes the package from `dsh.profile.bundles`.
  *
  * Usage:
  *   node scripts/install-desktop.mjs [--uninstall]
@@ -15,11 +26,10 @@
  *
  * The plugin takes effect after the DSH Desktop app is restarted.
  */
-import { spawn } from "node:child_process";
-import { readFile, writeFile, stat } from "node:fs/promises";
+import { spawn, execFileSync } from "node:child_process";
+import { readFile, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parse, stringify } from "yaml";
 
 const PLUGIN_ID = "dsh-rules";
 const DEFAULT_PROFILE = "desktop";
@@ -28,12 +38,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = resolve(here, "..");
 const ELECTRON_HEADERS_URL = "https://electronjs.org/headers";
 
-/**
- * pnpm splits `add` specs on spaces, so a repo path containing spaces cannot
- * be passed directly. A no-space directory junction beside the repo (e.g.
- * `C:\code_repos\dsh-rules` → `C:\code_repos\dsh rules plugin`) is used
- * instead; the installed dependency is a live link into the repo.
- */
+/** A no-space directory junction beside the repo for pnpm `add` specs. */
 function junctionPath() {
 	return join(dirname(REPO_DIR), PLUGIN_ID);
 }
@@ -91,72 +96,12 @@ async function runDshPlugin(args, spec) {
 	return outcome.code === 0;
 }
 
-/** Append the plugin row to the profile patch layer, preserving comments. */
-async function patchProfile(args) {
-	const dshHome = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? "", ".dsh");
-	const patchPath = join(dshHome, "profiles", args.profile, "cordis.patch.yml");
-	let raw;
-	try {
-		raw = await readFile(patchPath, "utf8");
-	} catch {
-		raw = "";
-	}
-	if (raw.includes(`id: ${PLUGIN_ID}`)) {
-		console.log(`cordis.patch.yml already contains ${PLUGIN_ID}; nothing to add.`);
-		return;
-	}
-	const insertBlock = [
-		`- insert:`,
-		`    - id: ${PLUGIN_ID}`,
-		`      name: ${PLUGIN_ID}`,
-		`      config:`,
-		`        includeClaudeSections: true`
-	].join("\n");
-	const trimmed = raw.trim();
-	let next;
-	if (trimmed === "[]" || trimmed.length === 0) {
-		// Keep the existing header comments; replace the empty array body.
-		const marker = trimmed.length === 0 ? "" : raw.lastIndexOf("[]");
-		const head = trimmed.length === 0 ? "" : raw.slice(0, marker);
-		next = `${head}${insertBlock}\n`;
-	} else {
-		let entries = parse(raw);
-		if (!Array.isArray(entries)) entries = [];
-		entries.push({ insert: [{ id: PLUGIN_ID, name: PLUGIN_ID, config: { includeClaudeSections: true } }] });
-		next = stringify(entries);
-	}
-	await writeFile(patchPath, next, "utf8");
-	console.log(`patched ${patchPath}`);
-}
-
-/** Remove the plugin row from the profile patch layer. */
-async function unstripProfile(args) {
-	const dshHome = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? "", ".dsh");
-	const patchPath = join(dshHome, "profiles", args.profile, "cordis.patch.yml");
-	let raw;
-	try {
-		raw = await readFile(patchPath, "utf8");
-	} catch {
-		console.log("no patch file to clean.");
-		return;
-	}
-	if (!raw.includes(`id: ${PLUGIN_ID}`)) {
-		console.log(`cordis.patch.yml has no ${PLUGIN_ID} row; nothing to remove.`);
-		return;
-	}
-	const entries = parse(raw);
-	if (Array.isArray(entries)) {
-		const kept = entries.filter((entry) => {
-			if (!Array.isArray(entry?.insert)) return true;
-			return !entry.insert.some((row) => row?.id === PLUGIN_ID);
-		});
-		if (kept.length !== entries.length) {
-			await writeFile(patchPath, kept.length > 0 ? stringify(kept) : "[]\n", "utf8");
-			console.log(`removed ${PLUGIN_ID} from ${patchPath}`);
-			return;
-		}
-	}
-	console.log(`could not parse ${patchPath}; remove the ${PLUGIN_ID} row manually.`);
+/** Create the no-space junction to this repo when it does not exist yet. */
+async function ensureJunction() {
+	const link = junctionPath();
+	if (await exists(link)) return;
+	execFileSync("cmd.exe", ["/c", "mklink", "/J", link, REPO_DIR], { stdio: "inherit" });
+	if (!(await exists(link))) fail(`failed to create junction ${link}`);
 }
 
 async function exists(path) {
@@ -171,23 +116,12 @@ async function exists(path) {
 const args = parseArgs(process.argv.slice(2));
 if (process.exitCode === 1) process.exit(1);
 if (args.uninstall) {
-	await unstripProfile(args);
 	const ok = await runDshPlugin(args, ["remove", PLUGIN_ID]);
 	if (!ok) process.exit(1);
-	console.log(`\nUninstalled. The dsh-rules plugin row is removed; restart DSH Desktop to complete.`);
+	console.log(`\nUninstalled. Restart DSH Desktop to complete.`);
 } else {
 	await ensureJunction();
 	const ok = await runDshPlugin(args, ["add", junctionPath()]);
 	if (!ok) process.exit(1);
-	await patchProfile(args);
-	console.log(`\nInstalled. Restart DSH Desktop, then create a session in a project with .dsh/rules/*.md to see rules activate.`);
-}
-
-/** Create the no-space junction to this repo when it does not exist yet. */
-async function ensureJunction() {
-	const link = junctionPath();
-	if (await exists(link)) return;
-	const { execFileSync } = await import("node:child_process");
-	execFileSync("cmd.exe", ["/c", "mklink", "/J", link, REPO_DIR], { stdio: "inherit" });
-	if (!(await exists(link))) fail(`failed to create junction ${link}`);
+	console.log(`\nInstalled (bundle auto-activated via dsh.profile.bundles). Restart DSH Desktop, then create a session in a project with .dsh/rules/*.md to see rules activate.`);
 }
