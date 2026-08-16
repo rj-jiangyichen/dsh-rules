@@ -60,10 +60,33 @@ glob 语法：`*`（单段通配）、`**`（跨目录）、`?`、`{a,b}`、`[ab
 
 项目规则（rank 100）> 用户规则（rank 200）> `# Path:` 段落（rank 300）。同名规则仅保留最高优先级者；渲染顺序按（rank, 名称）确定，保证跨 step 稳定。
 
-## 安装（DSH Desktop）
+## 安装
+
+### 通用安装（任意 DSH 部署）
+
+无需先克隆仓库，`dsh plugin` 会直接把 GitHub 上的包装进目标 profile：
 
 ```powershell
-# 1. 安装到 desktop profile 并写入 cordis.patch.yml
+# 1) 安装包（profile 名按你的部署调整：desktop / web / tui / headless）
+dsh plugin --profile desktop add "github:rj-jiangyichen/dsh-rules"
+
+# 2) 在 <profile>/cordis.patch.yml 追加插件行
+# - insert:
+#     - id: dsh-rules
+#       name: dsh-rules
+#       config:
+#         includeClaudeSections: true
+
+# 3) 重启 DSH（桌面版重启应用；web/headless 重启进程），插件随 Cordis 组合加载
+```
+
+> 本插件尚未发布到 npm registry；发布后将可直接 `dsh plugin --profile desktop add dsh-rules`。
+> 更新：代码推送到 GitHub 后，重新执行 `dsh plugin --profile desktop update dsh-rules`（或 remove 后 add）即可同步最新版本。
+
+### DSH Desktop（Windows）一键脚本
+
+```powershell
+# 1. 克隆本仓库后，在仓库根目录执行：安装到 desktop profile 并写入 cordis.patch.yml
 node scripts\install-desktop.mjs
 
 # 2. 重启 DSH Desktop（插件在下次启动时随 Cordis 组合加载）
@@ -89,6 +112,10 @@ mklink /J "C:\code_repos\dsh-rules" "C:\code_repos\dsh rules plugin"
 ```
 
 卸载：`node scripts\install-desktop.mjs --uninstall`，再重启应用。安装/卸载均不修改 DSH 安装目录（`resources\app.asar.unpacked`），只动 profile 配置，可随时回滚。
+
+## 发现与收录
+
+本插件通过 GitHub [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic 被 DSH 生态发现——这是 [DeepSeek Harness 官方 README](https://github.com/deepseek-ai/deepseek-harness) "Community and support" 章节推荐的插件收录渠道（*Add the `dsh-plugin` topic to your plugin repository for discoverability*）。社区插件列表与市场（如 awesome-dsh-plugin、dsh-plugin-marketplace）据此自动扫描收录；仓库 About 栏可查看/添加该标签。
 
 ## 配置项
 
