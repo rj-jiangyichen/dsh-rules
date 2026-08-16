@@ -1,0 +1,46 @@
+{
+  "name": "dsh-rules",
+  "version": "0.1.0",
+  "description": "DSH rules plugin: activate rule prompts / markdown documents by glob-matching the files an agent reads or edits (Claude Code rules.md style).",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./rules": {
+      "types": "./lib/types/rules.d.ts",
+      "default": "./lib/rules.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "picomatch": "^4.0.2",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-home-paths": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "picomatch": "^4.0.2",
+    "yaml": "^2.9.0"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  }
+}
