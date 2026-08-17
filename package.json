@@ -2,6 +2,15 @@
   "name": "dsh-rules",
   "version": "0.1.0",
   "description": "DSH rules plugin: activate rule prompts / markdown documents by glob-matching the files an agent reads or edits (Claude Code rules.md style).",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "rules",
+    "claude-code",
+    "agents",
+    "prompt"
+  ],
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
@@ -48,6 +57,9 @@
   },
   "scripts": {
     "test": "node --test"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
