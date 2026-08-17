@@ -56,7 +56,8 @@
     "yaml": "^2.9.0"
   },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "prepublishOnly": "pnpm test"
   },
   "publishConfig": {
     "access": "public"
