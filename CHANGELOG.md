@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.1.1] — 2026-08-29
 
 ### Fixed
 
@@ -20,5 +20,7 @@ Initial release.
 - Per-session touched-path tracking (subagents included), resume-friendly snapshot restoration from the session log.
 - Versioned rule discovery and caching: edits to rule files take effect on the next agent step.
 - Standard DSH plugin bundle (`dsh.bundle` manifest with `cordis.patch.yml`) — installable via `dsh plugin --profile <name> add dsh-rules`.
+
+[0.1.1]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.1
 
 [0.1.0]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.0
