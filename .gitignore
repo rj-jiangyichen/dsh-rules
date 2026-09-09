@@ -6,3 +6,6 @@ node_modules/
 
 # local scratch
 *.log
+
+# IDE
+.idea/
