@@ -1,6 +1,6 @@
 {
   "name": "dsh-rules",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DSH rules plugin: activate rule prompts / markdown documents by glob-matching the files an agent reads or edits (Claude Code rules.md style).",
   "keywords": [
     "dsh",
@@ -12,6 +12,10 @@
     "prompt"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rj-jiangyichen/dsh-rules.git"
+  },
   "type": "module",
   "main": "lib/index.js",
   "exports": {
