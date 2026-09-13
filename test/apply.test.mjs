@@ -121,3 +121,51 @@ test("apply: explicitly empty ruleDirNames disables project rule discovery", asy
 		await rm(workspace, { recursive: true, force: true });
 	}
 });
+
+// ── apply(): UI-visible rule activation notice ───────────────────────────────
+
+test("apply: injected rules message carries a one-line notice for the UI row", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		await writeFile(join(projectRoot, ".dsh", "rules", "style.md"), "---\n---\nAlways-on rule.\n");
+		await writeFile(join(projectRoot, ".dsh", "rules", "typescript.md"), "---\npath: \"**/*.ts\"\n---\nTS rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		const decision = await runPreStep(context, fakeAgent(projectRoot, "notice-summary"));
+		assert.equal(decision.messages.length, 1);
+		const message = decision.messages[0];
+		assert.equal(message.role, "user");
+		assert.equal(message.source.kind, "plugin");
+		assert.equal(message.source.plugin, "dsh-rules");
+		assert.equal(message.source.form, "notice");
+		assert.match(message.source.summary, /^Active rules: style$/);
+		assert.match(message.content[0].text, /Always-on rule\./);
+		assert.deepEqual(context.warnings, []);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
+test("apply: clearing an active snapshot injects a No active rules notice", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		const ruleFile = join(projectRoot, ".dsh", "rules", "style.md");
+		await writeFile(ruleFile, "---\n---\nAlways-on rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		const sessionId = "clear-notice";
+		const first = await runPreStep(context, fakeAgent(projectRoot, sessionId));
+		assert.equal(first.messages.length, 1);
+		assert.match(first.messages[0].source.summary, /^Active rules: style$/);
+		await rm(ruleFile);
+		const second = await runPreStep(context, fakeAgent(projectRoot, sessionId));
+		assert.equal(second.messages.length, 1);
+		assert.equal(second.messages[0].source.form, "notice");
+		assert.match(second.messages[0].source.summary, /^No active rules$/);
+		assert.match(second.messages[0].content[0].text, /No rules are currently active/);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});

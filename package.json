@@ -1,6 +1,6 @@
 {
   "name": "dsh-rules",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "DSH rules plugin: activate rule prompts / markdown documents by glob-matching the files an agent reads or edits (Claude Code rules.md style).",
   "keywords": [
     "dsh",

@@ -25,7 +25,7 @@ Glob-activated rule prompts for [DeepSeek Harness](https://github.com/deepseek-a
 
 - **Glob activation** — rules activate per file the agent touches: `**`, `*`, `?`, `{a,b}`, `[abc]`, and `!` negation (picomatch).
 - **Claude Code compatible** — plain rule files (`.dsh/rules/*.md`) *and* `# Path:` sections inside `CLAUDE.md` / `AGENTS.md`.
-- **Visible & durable** — active rules are injected as a user message the UI shows and the session log persists; each snapshot supersedes earlier ones, so the model always sees the current set.
+- **Visible & durable** — active rules are injected as a user message the UI shows and the session log persists; each injection appears in the chat as a collapsible row (same chrome as tool-call rows) with a one-line notice — e.g. `dsh-rules · Active rules: typescript, docs` — expanding to the full rules text. Each snapshot supersedes earlier ones, so the model always sees the current set.
 - **Budget-bounded** — byte-budget rendering (32 KB default): low-priority rules are dropped first, then the last rule is truncated; content is escaped so it can never break out of the framing tags.
 - **Resume-friendly** — on session resume the last snapshot and its matched files are restored from the log, preventing duplicate injection.
 - **Per-session tracking** — every agent/session tracks its own touched files (subagents included); global rules (no `path:`) are always active.
