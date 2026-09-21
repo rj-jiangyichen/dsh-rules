@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.4] — 2026-09-21
+
+### Fixed
+
+- Rule injection works again on the current harness. `@deepseek-ai/dsh-session` no longer exposes the `session.events` array (the log is read through `eventAt()` / `snapshotEvents()` / `ownEvents()`), so seeding a resumed session threw `TypeError: Cannot read properties of undefined (reading 'length')` on every `agent/pre-step`. The throw happened before the session was marked as seeded, so it recurred on every step, the handler swallowed it as a warning, and no rule was ever injected — the plugin looked loaded but did nothing. The seed now reads `session.snapshotEvents()`, and a regression test covers a resumed session whose log carries an older snapshot.
+- Dependency declarations now name the harness this plugin is built against: `@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-home-paths`, and `@deepseek-ai/dsh-session` are declared as `>=0.1.5-rc.2 <0.2.0` (development pins `0.1.5-rc.2`). The previous `^0.1.0-rc.6` ranges excluded every later prerelease, so a break like this one installed with no warning.
+- `scripts/install-desktop.mjs` finds the packaged CLI again: it hardcoded `resources/app.asar.unpacked`, which the current Desktop build no longer ships (the app payload lives under `resources/app`). Both layouts are now probed.
+
 ## [0.1.3] — 2026-09-13
 
 ### Added
@@ -26,6 +34,8 @@ Initial release.
 - Per-session touched-path tracking (subagents included), resume-friendly snapshot restoration from the session log.
 - Versioned rule discovery and caching: edits to rule files take effect on the next agent step.
 - Standard DSH plugin bundle (`dsh.bundle` manifest with `cordis.patch.yml`) — installable via `dsh plugin --profile <name> add dsh-rules`.
+
+[0.1.4]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.4
 
 [0.1.3]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.3
 

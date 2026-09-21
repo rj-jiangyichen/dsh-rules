@@ -34,9 +34,14 @@ import { fileURLToPath } from "node:url";
 const PLUGIN_ID = "dsh-rules";
 const DEFAULT_PROFILE = "desktop";
 const DEFAULT_APP = "C:\\Program Files\\DSH Desktop\\DSH Desktop.exe";
+const DEFAULT_ELECTRON_VERSION = "43.4.0";
+const ELECTRON_HEADERS_URL = "https://electronjs.org/headers";
+/** App roots to probe, newest layout first: the current Desktop build ships
+ *  the app unpacked under `resources/app`; older builds exposed the asar
+ *  payload under `resources/app.asar.unpacked`. */
+const APP_ROOT_LAYOUTS = ["app", "app.asar.unpacked"];
 const here = dirname(fileURLToPath(import.meta.url));
 const REPO_DIR = resolve(here, "..");
-const ELECTRON_HEADERS_URL = "https://electronjs.org/headers";
 
 /** A no-space directory junction beside the repo for pnpm `add` specs. */
 function junctionPath() {
@@ -60,12 +65,33 @@ function parseArgs(argv) {
 	return args;
 }
 
+/** Locate the packaged app payload that carries `lib/desktop-cli.js`. */
+async function resolveAppRoot(appPath) {
+	const resources = join(dirname(appPath), "resources");
+	for (const layout of APP_ROOT_LAYOUTS) {
+		const candidate = join(resources, layout);
+		if (await exists(join(candidate, "lib", "desktop-cli.js"))) return candidate;
+	}
+	fail(`could not find lib/desktop-cli.js under ${resources} (looked in ${APP_ROOT_LAYOUTS.join(", ")})`);
+	return void 0;
+}
+
+/** Electron version to build native dependencies against, from the payload manifest. */
+async function resolveElectronVersion(appRoot) {
+	try {
+		const appPackage = JSON.parse(await readFile(join(appRoot, "package.json"), "utf8"));
+		return appPackage.peerDependencies?.electron ?? DEFAULT_ELECTRON_VERSION;
+	} catch {
+		return DEFAULT_ELECTRON_VERSION;
+	}
+}
+
 /** Run the packaged `dsh plugin` command exactly like the desktop app does. */
 async function runDshPlugin(args, spec) {
-	const unpacked = join(dirname(args.app), "resources", "app.asar.unpacked");
-	const dshBootstrapPath = join(unpacked, "lib", "desktop-cli.js");
-	const appPackage = JSON.parse(await readFile(join(unpacked, "package.json"), "utf8"));
-	const electronVersion = appPackage.peerDependencies?.electron ?? "43.4.0";
+	const appRoot = await resolveAppRoot(args.app);
+	if (appRoot === void 0) return false;
+	const dshBootstrapPath = join(appRoot, "lib", "desktop-cli.js");
+	const electronVersion = await resolveElectronVersion(appRoot);
 	const dshHome = process.env.DSH_HOME ?? join(process.env.USERPROFILE ?? "", ".dsh");
 	const profileDir = join(dshHome, "profiles", args.profile);
 	if (!(await exists(profileDir))) fail(`profile directory not found: ${profileDir}`);

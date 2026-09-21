@@ -30,8 +30,12 @@ function fakeContext() {
 	return context;
 }
 
-function fakeAgent(cwd, sessionId) {
-	return { session: { id: sessionId, header: { cwd }, events: [] } };
+/** Minimal session surface the plugin consumes: `id`, `header.cwd`, and the
+ *  event log through `snapshotEvents()` — the accessor the current
+ *  @deepseek-ai/dsh-session exposes. The older `session.events` array is gone,
+ *  so reading it here would throw instead of injecting. */
+function fakeAgent(cwd, sessionId, events = []) {
+	return { session: { id: sessionId, header: { cwd }, snapshotEvents: () => events } };
 }
 
 /** Run one agent/pre-step through the registered handler. */
@@ -165,6 +169,33 @@ test("apply: clearing an active snapshot injects a No active rules notice", asyn
 		assert.equal(second.messages[0].source.form, "notice");
 		assert.match(second.messages[0].source.summary, /^No active rules$/);
 		assert.match(second.messages[0].content[0].text, /No rules are currently active/);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
+// ── apply(): resumed sessions ────────────────────────────────────────────────
+
+test("apply: a resumed session reads its log through the current session API", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		await writeFile(join(projectRoot, ".dsh", "rules", "style.md"), "---\n---\nResumed project rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		// The resumed log carries an older snapshot: re-seeding from it must
+		// succeed (no `session.events` member exists anymore) and, seeing the
+		// catalog changed, inject the current one.
+		const agent = fakeAgent(projectRoot, "resumed", [{
+			type: "user/message",
+			data: {
+				source: { kind: "plugin", plugin: "dsh-rules", form: "notice", summary: "Active rules: style" },
+				content: [{ type: "text", text: "<rules>\nstale snapshot\n</rules>" }]
+			}
+		}]);
+		const decision = await runPreStep(context, agent);
+		assert.match(injectedText(decision), /Resumed project rule\./);
+		assert.deepEqual(context.warnings, []);
 	} finally {
 		await rm(workspace, { recursive: true, force: true });
 	}
