@@ -45,6 +45,35 @@ async function runPreStep(context, agent) {
 	return handler({ agent, messages: [], signal: void 0 }, async () => ({ kind: "enter", messages: [] }));
 }
 
+/** Record one observed file the way the harness reports it (see apply()'s
+ *  `fs/observed` listener). Touch tracking is fire-and-forget: wait for the
+ *  effect through {@link pump} (uncached project root) or {@link settle}. */
+function observe(context, agent, displayPath) {
+	const handler = context.handlers.get("fs/observed");
+	assert.equal(typeof handler, "function");
+	handler({ displayPath }, { kind: "read" }, { agent });
+}
+
+/** Drive pre-steps, appending every injected snapshot text to `injected`, until
+ *  `predicate` is satisfied. Use while a session's project root is still being
+ *  resolved (the first touch does real filesystem work). */
+async function pump(context, agent, injected, predicate) {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const decision = await runPreStep(context, agent);
+		injected.push(...decision.messages.map((message) => message.content[0].text));
+		if (predicate(injected)) return injected;
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`condition not met after 200 steps; injected ${injected.length} snapshot(s)`);
+}
+
+/** Let a touch whose project root is already cached land: `touch()` then only
+ *  awaits a settled promise, so its bookkeeping runs in the microtask queue
+ *  ahead of this macrotask. */
+function settle() {
+	return new Promise((resolve) => setImmediate(resolve));
+}
+
 /** Temp workspace with a `<workspace>/project` root marked by `.git`. */
 async function makeProject() {
 	const workspace = await mkdtemp(join(tmpdir(), "dsh-rules-"));
@@ -169,6 +198,44 @@ test("apply: clearing an active snapshot injects a No active rules notice", asyn
 		assert.equal(second.messages[0].source.form, "notice");
 		assert.match(second.messages[0].source.summary, /^No active rules$/);
 		assert.match(second.messages[0].content[0].text, /No rules are currently active/);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
+// ── apply(): re-injection is keyed on the rule set, not on matched files ─────
+
+test("apply: a new matching file does not re-inject an unchanged snapshot", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		await writeFile(join(projectRoot, ".dsh", "rules", "typescript.md"), "---\npath: \"src/**/*.ts\"\n---\nTS rule.\n");
+		await writeFile(join(projectRoot, ".dsh", "rules", "docs.md"), "---\npath: \"docs/**/*.md\"\n---\nDocs rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		const agent = fakeAgent(projectRoot, "matched-file-churn");
+		const injected = [];
+		observe(context, agent, join(projectRoot, "src", "a.ts"));
+		await pump(context, agent, injected, (texts) => texts.length >= 1);
+		assert.match(injected[0], /matched files: src\/a\.ts\)/);
+		assert.doesNotMatch(injected[0], /Docs rule\./);
+		// A second TypeScript file changes only the snapshot's matched-file list,
+		// and those rules are already in context — so nothing may be injected.
+		observe(context, agent, join(projectRoot, "src", "b.ts"));
+		await settle();
+		const afterSecondFile = await runPreStep(context, agent);
+		assert.deepEqual(afterSecondFile.messages, [], "matched-file growth alone must not inject a snapshot");
+		// A file matching the second rule does change the active set: exactly one
+		// more snapshot, and it must carry the file list as it stands now.
+		observe(context, agent, join(projectRoot, "docs", "guide.md"));
+		await settle();
+		const afterSecondRule = await runPreStep(context, agent);
+		assert.equal(afterSecondRule.messages.length, 1);
+		const text = afterSecondRule.messages[0].content[0].text;
+		assert.match(text, /matched files: docs\/guide\.md, src\/a\.ts, src\/b\.ts\)/);
+		assert.match(text, /TS rule\./);
+		assert.match(text, /Docs rule\./);
+		assert.deepEqual(context.warnings, []);
 	} finally {
 		await rm(workspace, { recursive: true, force: true });
 	}

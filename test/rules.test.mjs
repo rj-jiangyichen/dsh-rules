@@ -12,7 +12,8 @@ import {
 	normalizeGlobField,
 	parseClaudePathSections,
 	parseRuleFile,
-	renderRules
+	renderRules,
+	snapshotKey
 } from "../lib/rules.js";
 import { findProjectRoot, listRuleDirEntries, posixRelative, statRuleFile } from "../lib/fs.js";
 
@@ -245,6 +246,49 @@ test("EMPTY_RULES_TEXT carries the superseding framing", () => {
 	assert.match(EMPTY_RULES_TEXT, /^<rules>/);
 	assert.match(EMPTY_RULES_TEXT, /No rules are currently active/);
 	assert.ok(EMPTY_RULES_TEXT.endsWith("</rules>"));
+});
+
+// ── snapshotKey ─────────────────────────────────────────────────────────────
+
+test("snapshotKey: a longer matched-file list does not change the key", () => {
+	const rule = activeRule("a", "x", "Body A");
+	const first = renderRules([rule], { maxBytes: 100_000, matchedFiles: ["src/a.ts"] }).text;
+	const second = renderRules([rule], { maxBytes: 100_000, matchedFiles: ["src/a.ts", "src/b.ts", "src/deep/c.ts"] }).text;
+	assert.notEqual(first, second, "the rendered snapshots differ");
+	assert.equal(snapshotKey(first), snapshotKey(second), "and yet the key is unchanged");
+	assert.match(snapshotKey(second), /^<rules>\nActive rules for files read or edited in this session\n/);
+	assert.doesNotMatch(snapshotKey(second), /matched files/);
+});
+
+test("snapshotKey: the list-free intro normalizes to the same key", () => {
+	const rule = activeRule("a", "x", "Body A");
+	const withList = renderRules([rule], { maxBytes: 100_000, matchedFiles: ["src/a.ts"] }).text;
+	const withoutList = renderRules([rule], { maxBytes: 100_000, matchedFiles: [] }).text;
+	assert.notEqual(withList, withoutList);
+	assert.equal(snapshotKey(withList), snapshotKey(withoutList));
+});
+
+test("snapshotKey: a list cut off by the budget still normalizes", () => {
+	const { text } = renderRules([activeRule("a", "x", "Body A")], {
+		maxBytes: 60,
+		matchedFiles: ["src/very/long/path/one.ts", "src/very/long/path/two.ts"]
+	});
+	assert.ok(text.length <= 60);
+	assert.ok(!text.includes(")"), "the budget cut the intro's file list before its closing paren");
+	assert.match(snapshotKey(text), /^<rules>\nActive rules for files read or edited in this session$/);
+});
+
+test("snapshotKey: rule membership and rule content still change the key", () => {
+	const options = { maxBytes: 100_000, matchedFiles: ["f.ts"] };
+	const base = renderRules([activeRule("a", "x", "Body A")], options).text;
+	const edited = renderRules([activeRule("a", "x", "Body A, revised")], options).text;
+	const added = renderRules([activeRule("a", "x", "Body A"), activeRule("b", "y", "Body B", 200)], options).text;
+	assert.notEqual(snapshotKey(base), snapshotKey(edited));
+	assert.notEqual(snapshotKey(base), snapshotKey(added));
+});
+
+test("snapshotKey: the empty-set snapshot has no intro line to reduce", () => {
+	assert.equal(snapshotKey(EMPTY_RULES_TEXT), EMPTY_RULES_TEXT);
 });
 
 // ── misc pure helpers ───────────────────────────────────────────────────────

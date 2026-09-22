@@ -43,7 +43,7 @@ agent reads/edits a file (fs/observed) → record per-session touched path
 match touched paths against globs → collect active rules → render a <rules> snapshot into the conversation
 ```
 
-- **Injection point**: an `agent/pre-step` waterfall listener appends a `<rules>`-framed user message; a new message is only appended when the snapshot text changes.
+- **Injection point**: an `agent/pre-step` waterfall listener appends a `<rules>`-framed user message; a new message is only appended when the active rule set or a rule's content changes. The matched-file list inside a snapshot is informational — a step that only adds matched files never re-sends the rule bodies.
 - **Discovery & caching**: rule sources are re-probed per step with version caching (`fs.stat().version`, or `mtimeMs:size` on the Node fallback) — edits to rule files take effect on the next step.
 - **Reads**: prefer the harness `fs` service (containment-aware); fall back to Node's filesystem when no `fs` service is mounted.
 
@@ -166,6 +166,7 @@ This plugin is discoverable through the GitHub [`dsh-plugin`](https://github.com
 - The touched-path set is in-memory: after resuming a session, rules re-activate as the agent re-reads files (the previously matched list is restored from the log).
 - Deployments with `includeRuntimeContext: false` are unaffected — this plugin injects its own message and does not depend on the runtime-context snapshot.
 - Rules are injected as "superseding snapshot" messages; the session log retains historical snapshots, but each snapshot is the complete current set and the model follows the latest one.
+- A snapshot's `matched files` list is a record of the moment it was rendered: files matched later do not re-send the rules, so that list can lag behind the session. The active set is always the one in the latest snapshot.
 
 ## Development
 
