@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.5] — 2026-09-22
+
+### Fixed
+
+- `exports` no longer advertises declaration files that do not exist. Both subpaths resolved `types` to `./lib/types/*.d.ts`, a directory that never existed in the repository or in the published tarball — so the conditions now read as plain module targets. The package ships JavaScript only; real declarations would need `tsc --emitDeclarationOnly` over the JSDoc plus a build step, which this package deliberately has none of.
+
+### Changed
+
+- Re-injection is now keyed on the active rule set and rule content, not on the rendered snapshot text. A snapshot's `(matched files: …)` intro records which files had matched when it was rendered; because that list was part of the compared text, every newly matched file re-sent the full body of every active rule. In a real workspace (four rules, 6.5–7.4 KB each) 13 of 15 observed injections were caused by nothing but that list growing, carrying 71.2 KB of 113.1 KB injected bytes. `snapshotKey` in `lib/rules.js` reduces a snapshot to its list-free form for the comparison, so the injected text (and therefore resume restoration from the log) is unchanged while the redundant snapshots disappear. Adds `snapshotKey` unit tests plus an `apply` test that a second matching file injects nothing and a second rule still does.
+
 ## [0.1.4] — 2026-09-21
 
 ### Fixed
@@ -34,6 +44,8 @@ Initial release.
 - Per-session touched-path tracking (subagents included), resume-friendly snapshot restoration from the session log.
 - Versioned rule discovery and caching: edits to rule files take effect on the next agent step.
 - Standard DSH plugin bundle (`dsh.bundle` manifest with `cordis.patch.yml`) — installable via `dsh plugin --profile <name> add dsh-rules`.
+
+[0.1.5]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.5
 
 [0.1.4]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.4
 
