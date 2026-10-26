@@ -326,7 +326,7 @@ test("findProjectRoot: falls back to cwd without a marker", async () => {
 	const root = await mkdtemp(join(tmpdir(), "dsh-rules-"));
 	try {
 		await mkdir(join(root, "a"), { recursive: true });
-		const found = await findProjectRoot(join(root, "a"), [".git"], void 0, void 0);
+		const found = await findProjectRoot(join(root, "a"), [".dsh-rules-test-no-marker"], void 0, void 0);
 		assert.equal(found, join(root, "a"));
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -334,10 +334,11 @@ test("findProjectRoot: falls back to cwd without a marker", async () => {
 });
 
 test("posixRelative: inside root, outside root, and the root itself", () => {
-	assert.equal(posixRelative("C:\\proj", "C:\\proj\\src\\a.ts"), "src/a.ts");
-	assert.equal(posixRelative("C:\\proj", "C:\\proj"), ".");
-	assert.equal(posixRelative("C:\\proj", "C:\\other\\a.ts"), void 0);
-	assert.equal(posixRelative("C:\\proj", "C:\\proj\\..\\escape.ts"), void 0);
+	const root = join(tmpdir(), "proj");
+	assert.equal(posixRelative(root, join(root, "src", "a.ts")), "src/a.ts");
+	assert.equal(posixRelative(root, root), ".");
+	assert.equal(posixRelative(root, join(tmpdir(), "other", "a.ts")), void 0);
+	assert.equal(posixRelative(root, join(root, "..", "escape.ts")), void 0);
 });
 
 test("statRuleFile: present and absent", async () => {

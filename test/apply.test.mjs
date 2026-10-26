@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { apply } from "../lib/index.js";
+import { createSessionFormatV3ToV4, releasedV4SessionFormatCodec } from "@deepseek-ai/dsh-session-format-v3-to-v4";
 
 // ── apply(): configuration and project rule discovery ───────────────────────
 
@@ -169,8 +170,8 @@ test("apply: injected rules message carries a one-line notice for the UI row", a
 		assert.equal(decision.messages.length, 1);
 		const message = decision.messages[0];
 		assert.equal(message.role, "user");
-		assert.equal(message.source.kind, "plugin");
-		assert.equal(message.source.plugin, "dsh-rules");
+		assert.equal(message.source.kind, "plugin:dsh-rules");
+		assert.equal(Object.hasOwn(message.source, "plugin"), false);
 		assert.equal(message.source.form, "notice");
 		assert.match(message.source.summary, /^Active rules: style$/);
 		assert.match(message.content[0].text, /Always-on rule\./);
@@ -267,3 +268,108 @@ test("apply: a resumed session reads its log through the current session API", a
 		await rm(workspace, { recursive: true, force: true });
 	}
 });
+
+// Exercise the host codec rather than duplicating its source admission rules.
+test("apply: rule snapshots and clearing notices pass the released v4 codec", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		const ruleFile = join(projectRoot, ".dsh", "rules", "style.md");
+		await writeFile(ruleFile, "---\n---\nCodec rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		const agent = fakeAgent(projectRoot, "codec");
+		const first = await runPreStep(context, agent);
+		assert.equal(first.messages.length, 1);
+		const event = { type: "user/message", seq: 0, time: 1, data: first.messages[0] };
+		const legacy = {
+			...event,
+			data: { ...event.data, source: { ...event.data.source, kind: "plugin", plugin: "dsh-rules" } }
+		};
+		assert.throws(() => releasedV4SessionFormatCodec.encodeEvent(legacy),
+			/format v4 message requires a producer-owned source kind/);
+		assert.doesNotThrow(() => releasedV4SessionFormatCodec.encodeEvent(event));
+		const migrated = [];
+		const stage = createSessionFormatV3ToV4([]).createStage({
+			sourceHeader: { type: "session", version: 3, id: "codec", createdAt: 0, cwd: projectRoot, isSeeded: false }
+		});
+		stage.transformEvent(legacy, { emitEvent: (row) => migrated.push(row) });
+		assert.equal(migrated.length, 1);
+		assert.deepEqual(migrated[0].data.source, event.data.source);
+		await rm(ruleFile);
+		const cleared = await runPreStep(context, agent);
+		assert.equal(cleared.messages.length, 1);
+		assert.doesNotThrow(() => releasedV4SessionFormatCodec.encodeEvent({
+			...event, seq: 1, data: cleared.messages[0]
+		}));
+		assert.deepEqual(context.warnings, []);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
+for (const source of [
+	{ kind: "plugin:dsh-rules" },
+	{ kind: "plugin", plugin: "dsh-rules" }
+]) {
+	test(`apply: restores unchanged scoped rules from ${source.kind} history`, async () => {
+		const { workspace, projectRoot } = await makeProject();
+		try {
+			await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+			const ruleFile = join(projectRoot, ".dsh", "rules", "style.md");
+			await writeFile(ruleFile, '---\npath: "src/**/*.ts"\n---\nScoped rule.\n');
+			const agent = fakeAgent(projectRoot, "before-resume");
+			const capture = fakeContext();
+			apply(capture, projectOnlyConfig(projectRoot));
+			observe(capture, agent, join(projectRoot, "src", "a.ts"));
+			let snapshot;
+			await pump(capture, agent, [], (texts) => {
+				snapshot = texts[0];
+				return snapshot !== undefined;
+			});
+			const resumed = fakeContext();
+			apply(resumed, projectOnlyConfig(projectRoot));
+			const restoredAgent = fakeAgent(projectRoot, "after-resume", [{
+				type: "user/message",
+				data: { source: { ...source, form: "notice" }, content: [{ type: "text", text: snapshot }] }
+			}]);
+			assert.deepEqual((await runPreStep(resumed, restoredAgent)).messages, []);
+			await writeFile(ruleFile, '---\npath: "src/**/*.ts"\n---\nChanged scoped rule.\n');
+			const changed = await runPreStep(resumed, restoredAgent);
+			assert.equal(changed.messages.length, 1);
+			assert.match(injectedText(changed), /Changed scoped rule/);
+			assert.equal(changed.messages[0].source.kind, "plugin:dsh-rules");
+			assert.deepEqual(resumed.warnings, []);
+		} finally {
+			await rm(workspace, { recursive: true, force: true });
+		}
+	});
+
+	test(`apply: deduplicates downstream ${source.kind} rules only`, async () => {
+		const { workspace, projectRoot } = await makeProject();
+		try {
+			await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+			await writeFile(join(projectRoot, ".dsh", "rules", "style.md"), "---\n---\nDedup rule.\n");
+			const initial = fakeContext();
+			apply(initial, projectOnlyConfig(projectRoot));
+			const agent = fakeAgent(projectRoot, "dedup");
+			const { messages: [snapshot] } = await runPreStep(initial, agent);
+			for (const own of [true, false]) {
+				const context = fakeContext();
+				apply(context, projectOnlyConfig(projectRoot));
+				const otherSource = source.kind === "plugin"
+					? { kind: "plugin", plugin: "other" } : { kind: "plugin:other" };
+				const downstream = { ...snapshot, source: { ...snapshot.source, ...(own ? source : otherSource) } };
+				const decision = await context.handlers.get("agent/pre-step")(
+					{ agent, messages: [], signal: undefined },
+					async () => ({ kind: "enter", messages: [downstream] })
+				);
+				assert.equal(decision.messages.length, own ? 1 : 2);
+				assert.ok(decision.messages.includes(downstream));
+				assert.deepEqual(context.warnings, []);
+			}
+		} finally {
+			await rm(workspace, { recursive: true, force: true });
+		}
+	});
+}
