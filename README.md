@@ -119,7 +119,7 @@ Rule body (markdown, injected verbatim when active — any prompt content works)
 
 | Frontmatter field | Description |
 | --- | --- |
-| `path` | String or list of globs, relative to the project root, `/` separators; `!` prefixes mark exclusion patterns. **Absent or empty = always-active global rule** (active for any session in the workspace). |
+| `path` | String or list of globs, relative to the effective project root, `/` separators; `!` prefixes mark exclusion patterns. **Absent or empty = always-active global rule** (active for any session in the workspace). |
 | `name` | Optional; rule identity (used for same-name deduplication). Defaults to the file name without `.md`. |
 
 ### Source B: `# Path:` sections (requires `includeClaudeSections: true`)
@@ -162,7 +162,8 @@ This plugin is discoverable through the GitHub [`dsh-plugin`](https://github.com
 
 ## Limitations
 
-- Only files **inside the project root** can activate rules; reads outside the root never trigger (avoids `../` false positives).
+- Glob paths are relative to the project root of the session's effective working directory, including a linked Git worktree. Rule sources and their precedence still come from the original session project and user rules directory. Without the Harness working-directory service, matching uses the original project root.
+- Only files **inside the effective project root** can activate rules; reads outside the root never trigger (avoids `../` false positives).
 - The touched-path set is in-memory: after resuming a session, rules re-activate as the agent re-reads files (the previously matched list is restored from the log).
 - Deployments with `includeRuntimeContext: false` are unaffected — this plugin injects its own message and does not depend on the runtime-context snapshot.
 - Rules are injected as "superseding snapshot" messages; the session log retains historical snapshots, but each snapshot is the complete current set and the model follows the latest one.
