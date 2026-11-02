@@ -169,8 +169,7 @@ test("apply: injected rules message carries a one-line notice for the UI row", a
 		assert.equal(decision.messages.length, 1);
 		const message = decision.messages[0];
 		assert.equal(message.role, "user");
-		assert.equal(message.source.kind, "plugin");
-		assert.equal(message.source.plugin, "dsh-rules");
+		assert.equal(message.source.kind, "plugin:dsh-rules");
 		assert.equal(message.source.form, "notice");
 		assert.match(message.source.summary, /^Active rules: style$/);
 		assert.match(message.content[0].text, /Always-on rule\./);
@@ -205,7 +204,7 @@ test("apply: clearing an active snapshot injects a No active rules notice", asyn
 
 // ── apply(): re-injection is keyed on the rule set, not on matched files ─────
 
-test("apply: a new matching file does not re-inject an unchanged snapshot", async () => {
+test("apply: a new matching file reuses the published rules snapshot", async () => {
 	const { workspace, projectRoot } = await makeProject();
 	try {
 		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
@@ -224,7 +223,7 @@ test("apply: a new matching file does not re-inject an unchanged snapshot", asyn
 		observe(context, agent, join(projectRoot, "src", "b.ts"));
 		await settle();
 		const afterSecondFile = await runPreStep(context, agent);
-		assert.deepEqual(afterSecondFile.messages, [], "matched-file growth alone must not inject a snapshot");
+		assert.equal(injectedText(afterSecondFile), injected[0], "matched-file growth must preserve the published snapshot");
 		// A file matching the second rule does change the active set: exactly one
 		// more snapshot, and it must carry the file list as it stands now.
 		observe(context, agent, join(projectRoot, "docs", "guide.md"));

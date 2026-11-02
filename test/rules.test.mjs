@@ -47,8 +47,8 @@ test("parseRuleFile: empty path string means always active", () => {
 	assert.deepEqual(rule, { name: "x", globs: [], content: "Body." });
 });
 
-test("parseRuleFile: missing frontmatter is rejected", () => {
-	assert.equal(parseRuleFile("# No frontmatter\n\nbody\n", "x"), void 0);
+test("parseRuleFile: missing frontmatter is unconditional", () => {
+	assert.deepEqual(parseRuleFile("# No frontmatter\n\nbody\n", "x"), { name: "x", globs: [], content: "# No frontmatter\n\nbody" });
 });
 
 test("parseRuleFile: invalid YAML is rejected", () => {
