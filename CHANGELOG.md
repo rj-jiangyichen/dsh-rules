@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.7] — 2026-11-13
+
+### Fixed
+
+- Rule injection no longer fails on DSH 0.2.2-rc.1. Session format 4 retired the shared `plugin` message-source kind: while an appended event is encoded (`releasedV4SessionFormatCodec.encodeEvent` → `assertV4RowAdmission`), a source of `{ kind: "plugin", plugin: … }` is rejected with `SessionFormatError: format v4 message requires a producer-owned source kind`. That check runs on the way into the log — outside the handler's own `try`/`catch` — so the plugin stayed loaded, injected a message, and the harness aborted the step with that error. The injected snapshot now follows the session's own format version (`agent.session.header.version`): format 4+ sources it as `{ kind: "plugin:dsh-rules", form: "notice", summary }`, the same kind the host's own V3-to-V4 migration assigns to snapshots written by earlier versions, so a resumed session and a live one agree; older sessions keep `{ kind: "plugin", plugin: "dsh-rules" }`. Both read paths (`seedFromSession`, `sameRulesMessage`) accept either kind, so a resumed log still restores its snapshot text and matched-file list.
+
+### Added
+
+- Tests for the format boundary: a format-4 session emits the producer-owned kind and drops the retired `plugin` field, and a resumed format-4 snapshot seeds both its text and its matched files (the glob rule activates with no file read in the process).
+
 ## [0.1.6] — 2026-10-19
 
 ### Fixed
@@ -54,6 +64,8 @@ Initial release.
 - Per-session touched-path tracking (subagents included), resume-friendly snapshot restoration from the session log.
 - Versioned rule discovery and caching: edits to rule files take effect on the next agent step.
 - Standard DSH plugin bundle (`dsh.bundle` manifest with `cordis.patch.yml`) — installable via `dsh plugin --profile <name> add dsh-rules`.
+
+[0.1.7]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.7
 
 [0.1.6]: https://github.com/rj-jiangyichen/dsh-rules/releases/tag/v0.1.6
 

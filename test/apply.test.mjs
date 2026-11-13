@@ -30,12 +30,19 @@ function fakeContext() {
 	return context;
 }
 
-/** Minimal session surface the plugin consumes: `id`, `header.cwd`, and the
- *  event log through `snapshotEvents()` — the accessor the current
- *  @deepseek-ai/dsh-session exposes. The older `session.events` array is gone,
- *  so reading it here would throw instead of injecting. */
-function fakeAgent(cwd, sessionId, events = []) {
-	return { session: { id: sessionId, header: { cwd }, snapshotEvents: () => events } };
+/** Minimal session surface the plugin consumes: `id`, `header.cwd`, `header.version`
+ *  when a test pins the session format, and the event log through
+ *  `snapshotEvents()` — the accessor the current @deepseek-ai/dsh-session
+ *  exposes. The older `session.events` array is gone, so reading it here would
+ *  throw instead of injecting. */
+function fakeAgent(cwd, sessionId, events = [], sessionFormatVersion = void 0) {
+	return {
+		session: {
+			id: sessionId,
+			header: sessionFormatVersion === void 0 ? { cwd } : { cwd, version: sessionFormatVersion },
+			snapshotEvents: () => events
+		}
+	};
 }
 
 /** Run one agent/pre-step through the registered handler. */
@@ -180,6 +187,28 @@ test("apply: injected rules message carries a one-line notice for the UI row", a
 	}
 });
 
+test("apply: a format-4 session drops the retired plugin source for its own kind", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		await writeFile(join(projectRoot, ".dsh", "rules", "style.md"), "---\n---\nAlways-on rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		const decision = await runPreStep(context, fakeAgent(projectRoot, "notice-v4", [], 4));
+		assert.equal(decision.messages.length, 1);
+		const source = decision.messages[0].source;
+		// Format 4 refuses `kind: "plugin"`; the producer-owned kind is also what
+		// the host's own V3-to-V4 migration gives an older snapshot.
+		assert.equal(source.kind, "plugin:dsh-rules");
+		assert.equal(Object.hasOwn(source, "plugin"), false);
+		assert.equal(source.form, "notice");
+		assert.match(source.summary, /^Active rules: style$/);
+		assert.deepEqual(context.warnings, []);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
 test("apply: clearing an active snapshot injects a No active rules notice", async () => {
 	const { workspace, projectRoot } = await makeProject();
 	try {
@@ -262,6 +291,32 @@ test("apply: a resumed session reads its log through the current session API", a
 		}]);
 		const decision = await runPreStep(context, agent);
 		assert.match(injectedText(decision), /Resumed project rule\./);
+		assert.deepEqual(context.warnings, []);
+	} finally {
+		await rm(workspace, { recursive: true, force: true });
+	}
+});
+
+test("apply: a resumed format-4 snapshot seeds both the text and its matched files", async () => {
+	const { workspace, projectRoot } = await makeProject();
+	try {
+		await mkdir(join(projectRoot, ".dsh", "rules"), { recursive: true });
+		await writeFile(join(projectRoot, ".dsh", "rules", "typescript.md"), "---\npath: \"src/**/*.ts\"\n---\nTS rule.\n");
+		const context = fakeContext();
+		apply(context, projectOnlyConfig(projectRoot));
+		// A format-4 snapshot names this plugin by its producer-owned kind. The
+		// matched-file list it carries must seed the touch set: nothing reads a
+		// file in this process, so only a recognized snapshot can activate the
+		// glob rule.
+		const agent = fakeAgent(projectRoot, "resumed-v4", [{
+			type: "user/message",
+			data: {
+				source: { kind: "plugin:dsh-rules", form: "notice", summary: "Active rules: typescript" },
+				content: [{ type: "text", text: "<rules>\nstale snapshot (matched files: src/a.ts)\n</rules>" }]
+			}
+		}], 4);
+		const decision = await runPreStep(context, agent);
+		assert.match(injectedText(decision), /TS rule\./);
 		assert.deepEqual(context.warnings, []);
 	} finally {
 		await rm(workspace, { recursive: true, force: true });
